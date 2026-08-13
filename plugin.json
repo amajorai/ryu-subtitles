@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ryu.subtitles",
+  "version": "1.0.0",
+  "description": "Pick a video on your own machine, transcribe it locally, translate the transcript into the language you want, and get a timed .srt or .vtt written beside the file.",
+  "keywords": ["subtitles", "captions", "transcription", "translation", "video"],
+  "extensions": {
+    "com.ryuhq.ryu": {
+      "id": "@ryu/subtitles",
+      "displayName": "Subtitles"
+    }
+  }
+}
