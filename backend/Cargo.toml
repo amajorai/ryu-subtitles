@@ -1,0 +1,85 @@
+[package]
+name = "ryu-subtitles"
+# The version the publish train is on. `tools/publish-crates.sh` reads TRAIN_VERSION
+# from the FIRST crate in its list and requires every crate in the set to be on it,
+# so an apps-store backend that drifts to its own version silently breaks the
+# release. Every other `apps-store/*/backend` is on 0.1.11; so is this one.
+version = "0.1.13"
+edition = "2021"
+license = "Apache-2.0"
+description = "Subtitles for Ryu: pick a video, transcribe it locally, translate the transcript into a target language, and write a timed .srt/.vtt beside the file. Owns the whole pipeline out-of-process — container demux + 16 kHz mono downmix (symphonia), silence-aware windowing, local whisper transcription via the extracted `ryu-stt` crate, a local-gateway translation pass, and cue layout — as a SQLite-backed sidecar Core spawns and proxies to on loopback. ZERO dependency on apps/core."
+repository = "https://github.com/amajorai/ryu"
+
+# Sidecar-ONLY: this crate is a process, not a library Core links. The shape here is
+# `ryu-social`'s / `ryu-mail`'s: one `[[bin]]`, every module bin-private via `mod`
+# declarations in `main.rs`, and no `lib.rs`. Core reaches this app exclusively
+# through the generic ext-proxy (`/api/ext/@ryu/subtitles/*` + the `public_mount` at
+# `/api/subtitles`), so there is nothing for Core to link and no `apps/core` dep in
+# either direction.
+[[bin]]
+name = "ryu-subtitles"
+path = "src/main.rs"
+
+# Versions are matched to apps/core/Cargo.toml (and to the sibling apps-store
+# backends) so this crate joining the root workspace via the `apps-store/*/backend`
+# member glob introduces NO version skew for any other job building the tree.
+[dependencies]
+# `full` is required, not optional: the bin needs the multi-thread runtime + macros +
+# net for `#[tokio::main]` / `TcpListener` / `axum::serve`, and the job worker needs
+# `tokio::task::spawn_blocking` (the decode loop is CPU-bound and synchronous) plus
+# the bounded `mpsc` that gives that decoder backpressure.
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+rusqlite = { version = "0.40.0", features = ["bundled"] }
+# The translation pass talks to the LOCAL gateway (`/v1/chat/completions`); the STT
+# hop inside `ryu-stt` needs `multipart` for the audio upload.
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+tracing = "0.1"
+dirs = "5"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# WAV encode only: every window handed to the STT engine is a 16 kHz mono PCM WAV,
+# which is the one container whisper.cpp and the Gateway both accept. Same version
+# `ryu-meetings` pins, so the shared lockfile does not move.
+hound = "3"
+# Container demux + audio decode. This is the ONE dependency with no precedent in
+# the repo, and it is what makes "pick a video" mean an actual video: `hound` reads
+# WAV alone, and the only ffmpeg in the tree is `apps/shadow`'s OPTIONAL `video`
+# feature, which needs system FFmpeg libraries this sidecar cannot assume. Symphonia
+# is pure Rust, so the sidecar keeps shipping as a single self-contained binary.
+# Features are named explicitly rather than left to the defaults because the
+# defaults carry neither ISO-MP4/MOV (the common case) nor AAC (what is inside it).
+# A container/codec outside this set is reported as a typed `unsupported media`
+# error — never a hang and never a garbage transcript.
+symphonia = { version = "0.5", features = [
+    "isomp4",
+    "mkv",
+    "ogg",
+    "wav",
+    "aac",
+    "adpcm",
+    "alac",
+    "flac",
+    "mp3",
+    "pcm",
+    "vorbis",
+] }
+# The extracted STT primitive: the transcription pass reuses the SAME code path Core
+# runs (whisper.cpp `/inference` + the Gateway `/v1/audio/transcriptions` proxy) via
+# `ryu_stt::transcribe_wav_detailed`, injecting an env-resolved `SttHost`.
+#
+# Built at DEFAULT features (NO `voice-parakeet`) — deliberately, and load-bearing
+# for this app rather than merely lean: parakeet returns TEXT ONLY (`segments` is
+# always empty), and a subtitle file is its timings. Default features make
+# `default_stt_engine()` resolve to whisper, the engine that populates
+# `TranscriptSegment { start_ms, end_ms }` from `verbose_json`. ZERO apps/core dep.
+ryu-stt = { path = "../crates/core/stt", version = "0.1.13" }
+# The app-event emit client: raises the `contributes.hook_events` this app declares
+# in its manifest (`job.queued` / `job.completed` / `job.failed`) so plugin hooks and
+# event-triggered workflows can react to a finished subtitle file without this crate
+# knowing they exist. Best-effort and no-ops when the process is not Core-hosted.
+ryu-app-events = { path = "../crates/core/app-events", version = "0.1.13" }
