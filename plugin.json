@@ -1,0 +1,27 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ryu.subtitles",
+  "version": "0.1.14",
+  "description": "Pick a video on this machine, transcribe it locally, translate the transcript into the language you want, and get a timed .srt or .vtt written beside the file so your player picks it up. Both model hops stay on the device — local whisper for the transcription, the local gateway's on-device model for the translation — so nothing about the video leaves the disk it is already on. Long jobs are queued and polled, so a feature film keeps working while you do something else.",
+  "author": {
+    "name": "Ryu",
+    "url": "https://ryuhq.com"
+  },
+  "homepage": "https://github.com/amajorai/ryu-subtitles",
+  "repository": "https://github.com/amajorai/ryu-subtitles",
+  "keywords": [
+    "subtitles",
+    "captions",
+    "transcription",
+    "translation",
+    "video",
+    "srt",
+    "vtt"
+  ],
+  "extensions": {
+    "com.ryuhq.ryu": {
+      "id": "@ryu/subtitles",
+      "displayName": "Subtitles"
+    }
+  }
+}
